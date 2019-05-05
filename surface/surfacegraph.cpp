@@ -6,9 +6,6 @@
 #include <QtSql/QSqlQuery>
 using namespace QtDataVisualization;
 
-
-
-
 SurfaceGraph::SurfaceGraph(Q3DSurface *surface)
     : m_graph(surface)
 {
@@ -34,7 +31,7 @@ void SurfaceGraph::open()
 {
 	QSqlDatabase db;
 	db = QSqlDatabase::addDatabase("QSQLITE");
-	db.setDatabaseName(".\\read.db");
+	db.setDatabaseName("./read.db");
 	db.open();
 	QSqlQuery query(db);
 	query.exec(QString("SELECT x,y,z  FROM xyz"));
@@ -87,7 +84,7 @@ void SurfaceGraph::open()
 	m_graph->axisZ()->setLabelAutoRotation(30);
 
 	m_graph->addSeries(series);
-
+	
 }
 
 void SurfaceGraph::fillProxy()
