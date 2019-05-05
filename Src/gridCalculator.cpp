@@ -1,7 +1,6 @@
 ﻿#include "GridCalculator.h"
 #include "LevenbergMarquardt.h"
-
-
+#include <cmath>
 
 class MatrixMultiplyBody2D 
 {

@@ -1,15 +1,11 @@
-
 #ifndef SURFACEGRAPH_H
 #define SURFACEGRAPH_H
-
 #include <QtDataVisualization/Q3DSurface>
 #include <QtDataVisualization/QSurfaceDataProxy>
 #include <QtDataVisualization/QHeightMapSurfaceDataProxy>
 #include <QtDataVisualization/QSurface3DSeries>
 #include <QtWidgets/QSlider>
 #include "GridCalculator.h"
-
-using namespace QtDataVisualization;
 
 enum class calc_grid_algo_type
 {
@@ -18,7 +14,6 @@ enum class calc_grid_algo_type
 	rbf_algo,
 	kriging_algo
 };
-
 
 class SurfaceGraph : public QObject
 {
@@ -69,9 +64,6 @@ private:
 	uint sampleCountZ{};
     void fillProxy();
 	void open();
-
-
-
 };
 
 #endif // SURFACEGRAPH_H

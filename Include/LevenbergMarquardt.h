@@ -1,4 +1,5 @@
-﻿#pragma   once
+﻿#pragma once
+#include <cmath>
 
 template<int n> 
 void solve_axb_cholesky(double l[n][n], double x[n], double b[n])

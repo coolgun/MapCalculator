@@ -1,5 +1,3 @@
-
-#include "surfacegraph.h"
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QWidget>
 #include <QtWidgets/QHBoxLayout>
@@ -15,6 +13,7 @@
 #include <QtWidgets/QMessageBox>
 #include <QtGui/QPainter>
 #include <QtGui/QScreen>
+#include "surfacegraph.h"
 
 int main(int argc, char **argv)
 {

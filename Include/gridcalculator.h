@@ -208,7 +208,7 @@ inline void SummingVector2(const size_t n, const double* x,const double* y,const
 class solveBigStab
 {
 public:
-	static void solveBigStab::exec(std::vector<double> &A, std::vector<double> &b);
+	static void exec(std::vector<double> &A, std::vector<double> &b);
 };
 
 
