@@ -3,12 +3,13 @@
 #include "tbb/blocked_range2d.h"
 #include "tbb/parallel_for.h"
 #include "tbb/parallel_reduce.h"
+#include "tbb/concurrent_vector.h"
 #include <array>
 #include "Solver.h"
 
 
-using Point3DList=std::vector<std::tuple<double, double,double>> ;
-using Point2DList = std::vector<std::pair<double,double>>;
+using Point3DList = std::vector<std::tuple<double, double, double>>;
+using Point2DList = std::vector<std::pair<double, double>>;
 
 struct CalculParam
 {
@@ -20,97 +21,77 @@ struct CalculParam
 
 inline double tbb_dot(const size_t n, const double* x, const double* y)
 {
-	class  tbb_dot_summ
+	struct  tbb_dot_summ
 	{
 		const double *x;
 		const double *y;
-		
-	public:
-		mutable double global_sum{};
-		tbb_dot_summ(const double *px,const double *py):
+	
+		double global_sum{};
+		tbb_dot_summ(const double *px, const double *py) :
 			x(px),
 			y(py),
 			global_sum(0.0)
-
 		{
 
 		}
-		void operator() ( const tbb::blocked_range<size_t>& r)const
-		{				
-			double sum=global_sum;
-			for(size_t i= r.begin();i<r.end();++i)
+		void operator() (const tbb::blocked_range<size_t>& r)
+		{
+			double sum = global_sum;
+			for (auto i = r.begin(); i < r.end(); ++i)
 			{
-				sum+=x[i]*y[i];
+				sum += x[i] * y[i];
 			}
-			global_sum=sum;
+			global_sum = sum;
 		}
 
-		tbb_dot_summ(const tbb_dot_summ& x, tbb::split ) : 
-			x(x.x), 
-			y(x.y) ,
+		tbb_dot_summ(const tbb_dot_summ& x, tbb::split) :
+			x(x.x),
+			y(x.y),
 			global_sum(0.0)
 		{
 
-		
+
 		}
- 
-	    void join( const tbb_dot_summ& x ) 
+
+
+		void join(const tbb_dot_summ& x)
 		{
-			global_sum+=x.global_sum;
+			global_sum += x.global_sum;
 		}
-	
 
-};
 
-	double sum=0.0;
-	for(size_t i= 0;i<n;++i)
-	{
-		sum+=x[i]*y[i];
-	}
+	};
 
-	return sum;
-	
+	tbb_dot_summ  sumBody(x, y);
+
+	tbb::parallel_reduce(tbb::blocked_range<size_t>(0, n), sumBody);
+
+	return sumBody.global_sum;
+
 }
 
 // res <- mx
 inline void mulMatrixVector(const size_t n, const double* m,const double* x ,double* res)
 {
 	
-	class  mulMatrixVector_calcul
-	{
-			const double* m;
-			const double* x;
-			double		*res;
-			const size_t n;
+	tbb::parallel_for(tbb::blocked_range<size_t>(0, n),
+		[n, m, x, res](const tbb::blocked_range<size_t>& r)
+		{
 
-			
-		public:
-			mulMatrixVector_calcul(	size_t pN,	const double* pM,	const double* pX, double* pRes):
-				n(pN),
-				m(pM),
-				x(pX),
-				res(pRes)
+			double *pres = &res[r.begin()];
+			auto  *prow = &m[r.begin()*n];
+			for (size_t i = r.begin(); i < r.end(); ++i, ++pres)
 			{
+				const double *px = x;
+				double sum = 0.0;
+				for (size_t k = 0; k < n; ++k, ++prow, ++px)
+					sum += *prow**px;
+				*pres = sum;
 			}
-			void operator() ( const tbb::blocked_range<size_t>& r)const
-			{				
-				
-				double *pres	=	&res[r.begin()];
-				auto  *prow	=	&m[r.begin()*n];
-				for(size_t i= r.begin();i<r.end();++i,++pres)
-				{
-					  const double *px		=	x;
-					  double sum =0.0;
-					  for( size_t k=0; k<n; ++k,++prow,++px)
-							sum += *prow**px;
-					  *pres=sum;
-				}
 
-			}
-	};
-
-	const mulMatrixVector_calcul calc(n,m,x,res);
-	tbb::parallel_for(tbb::blocked_range<size_t>(0, n),calc);
+		}
+	
+	);
 				
 	
 }
@@ -408,8 +389,6 @@ class FunctionCalculatorKriging
 					{		
 							double		yT	=	0.0; 
 							double		eT	=	0.0; 
-							
-							
 							for(size_t j=0;j<size;++j)
 							{	
 								yT+=pA[size*i+j]*std::get<2>(pList[j]);	

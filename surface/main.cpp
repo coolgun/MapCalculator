@@ -155,7 +155,7 @@ int main(int argc, char **argv)
     vLayout->addWidget(new QLabel(QStringLiteral("calc method")));
     vLayout->addWidget(calc_type);
 	
-	auto *l = new QLabel(QStringLiteral("tension"));
+	auto *l = new QLabel(QStringLiteral("tension(%)"));
 	vLayout->addWidget(l);
 	vLayout->addWidget(teneson);
 	controls.push_back(qMakePair(1, l));

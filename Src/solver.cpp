@@ -8,92 +8,35 @@ namespace
 	constexpr double tol = 0.0000001;
 }
 
-class  PivotFinder
+
+
+bool LU_Solver(double *A, double *B, int n)
 {
-		
-	public:
-		const double	*A;
-		mutable double	max_val;
-		int				k;
-		mutable int		pivot;
-		int				n;
-		
-		PivotFinder(int pN, const double *pA,int pK):
-			n(pN),
-			A(pA),
-			k(pK),
-			pivot(0),
-			max_val(std::abs( pA[pN*pK+pK] ))
-
-		{
-
-		}
-		void operator() ( const tbb::blocked_range<size_t>& r)const
-		{				
-			double	 m			=	max_val;
-			int	 	 p			=	pivot;
-			auto	 *pA		=	&A[n*(r.begin()+k+1)+k];
-			
-			for(size_t j= r.begin();j<r.end();++j,pA+=n)
-			{
-				const auto val=std::abs(*pA);
-				if ( m < val ) 
-				 {
-					m = val;
-					p = j+k+1;
-				 }
-			}
-			max_val	=	m;
-			pivot	=	p;
-		}
-
-		PivotFinder(const PivotFinder& x, tbb::split ) : 
-			n(x.n),
-			A(x.A),
-			k(x.k),
-			pivot(0),
-			max_val(0.0)
-		{
-
-		
-		}
- 
-	    void join( const PivotFinder& x ) 
-		{
-				if(max_val<x.max_val)
-				{
-					max_val		=	x.max_val;
-					pivot		=	x.pivot;
-				}
-
-		}
-	
-
-};
-
-	
-
-
-bool Crout_LU_Decomposition_with_Pivoting(double *A, double *B, int n,bool *sign)
-{
-   int i, j, k; // p, row;
-   double *p_k, *p_row, *p_col;
-   double max;
-
-   std::vector<double> tms(n);
-
-   *sign=true;
-
-   int pivot;
-
-   PivotFinder piv_fnd(n,A,0);
-
-   for (k = 0, p_k = A; k < n; p_k += n, k++) 
+   
+   auto *p_k = A;
+   
+   for (int k = 0; k < n; p_k += n, k++) 
    {
       
- 	  pivot=k;
+	   /*const int pivot =
+		   tbb::parallel_reduce(tbb::blocked_range<int>(k + 1, n),qMa  ,
+			  [&](const tbb::blocked_range<int>& r, MyMin current) -> std::pair<int, double>
+			  {
+				  for (int i = r.begin(); i < r.end(); ++i)
+					  if (a[i] < current.value)
+					  {
+						  current.value = a[i]; current.idx = i;
+					  }return current;
+			  },
+			  [](const MyMin a, const MyMin b) -> MyMin
+	  {
+		  return a.value < b.value ? a : b; }
+	  );*/
 			  
-	  for (j = k + 1, p_row = p_k + n; j < n; j++, p_row += n)
+	  int pivot = k;
+	  double *p_row = p_k + n;
+
+	  for (int j = k + 1; j < n; j++, p_row += n)
 	  {
 	         
 		 if (std::abs(*(p_row + k))>tol ) 
@@ -105,83 +48,65 @@ bool Crout_LU_Decomposition_with_Pivoting(double *A, double *B, int n,bool *sign
 	
       if (pivot != k)
 	  {
-		  p_col		=	A+pivot*n;
-		  
+		  double *p_col		=	A+pivot*n;
 		  std::swap(B[k],B[pivot]);
-		  *sign=!*sign;
 
-		  for (j = 0; j < n; j++) 
-		 {
-            max = *(p_k + j);
-            *(p_k + j) = *(p_col + j);
-            *(p_col + j) = max;
-         }
+		  tbb::parallel_for(tbb::blocked_range<int>(0, n), [p_k, p_col](const tbb::blocked_range<int>&r)
+			  {
+				  for (int j = r.begin(); j < r.end(); ++j)
+					  std::swap(*(p_k + j), *(p_col + j));
+			  }
+		  );
+
 	  }
 
-	  
 
       if ( *(p_k + k) == 0.0 )
 	  {
 		  return {}; // матрица сингулярна
 	  }
-	  double del=1/(*(p_k + k));
+	  const double del=1/(*(p_k + k));
 
-      for (j = k+1; j < n; j++) 
+      for (int j = k+1; j < n; j++) 
 	  {
 			*(p_k + j)*= del;
       }
 
-      for (i = k+1, p_row = p_k + n; i < n; p_row += n, i++)
+	  p_row = p_k + n;
+
+      for (int i = k+1 ; i < n; p_row += n, i++)
 	  {
-		  //*(p_k + j) /= *(p_k + k);
 		  const auto a= *(p_row + k);
-         
-		  for (j = k+1; j < n; j++)
+		  for (int j = k+1; j < n; j++)
             *(p_row + j) -= a * *(p_k + j);
 	  }
 
    }
-   return true;
-}
 
-bool  Crout_LU_with_Pivoting_Solve(double *LU, double *B,  int n)
+   p_k = A;
 
-{
-   int i, k;
-   double *p_k;
-   //double dum;
-
-   std::vector<double> x(n);
-
-   
-   for (k = 0, p_k = LU; k < n; p_k += n, k++) 
+   for (int k = 0 ; k < n; p_k += n, k++)
    {
-      x[k] = B[k];
-      for (i = 0; i < k; i++) x[k] -= x[i] * *(p_k + i);
-      x[k] /= *(p_k + k);
-   }
-   for (k = n-1, p_k = LU + n*(n-1); k >= 0; k--, p_k -= n)
-   {
-      for (i = k + 1; i < n; i++) x[k] -= x[i] * *(p_k + i);
-	  if (*(p_k + k) == 0.0) return {};
+	   for (int i = 0; i < k; i++) B[k] -= B[i] * *(p_k + i);
+	   B[k] /= *(p_k + k);
    }
 
-   std::copy_n(x.cbegin(), n, B);
-  
+   p_k = A + n * (n - 1);
+
+   for (int k = n - 1; k >= 0; k--, p_k -= n)
+   {
+	   for (int i = k + 1; i < n; i++) B[k] -= B[i] * *(p_k + i);
+	   if (*(p_k + k) == 0.0) return {};
+   }
+
+
    return true;
 }
-
 
 
 bool solveCrout::exec(std::vector<double> &S,std::vector<double> &b)
 {
-		bool sign=false;
-		const int d = b.size();
-		bool ret=Crout_LU_Decomposition_with_Pivoting(&S[0], &b[0],d,&sign);
-		if(!ret) return false;
-		ret=Crout_LU_with_Pivoting_Solve(&S[0],&b[0],d);
-		if(!ret) return false;
-		return true;
+		return LU_Solver(&S[0], &b[0], b.size());
 }
 
 bool solveCrout::invert(int n,std::vector<double> &S)
@@ -223,14 +148,14 @@ bool solveCrout::invert(int n,std::vector<double> &S)
 		}
 			
 		if (!(*(p_i + i))) return {};
-		double delta=1/(*(p_i+i));
+		const double delta=1/(*(p_i+i));
 		
 		for(int j = 0; j < n; ++j)
 		{
 			
             if(i!=j)
 			{
-                double ratio = S[n*j+i]*delta;
+				const double ratio = S[n*j+i]*delta;
                 for(int k = 0; k <n; ++k)
 				{
                     S[j*n+k]	-= ratio * S[n*i+k];
@@ -242,7 +167,7 @@ bool solveCrout::invert(int n,std::vector<double> &S)
 
     for(int	i = 0; i < n; i++)
 	{
-        double a = S[n*i+i];
+		const double a = S[n*i+i];
 
         for(int	j = 0; j < n; ++j)
 		{

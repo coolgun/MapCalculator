@@ -3,41 +3,30 @@
 
 
 
-class MatrixMultiplyBody2D 
-{
-    const double *my_a;
-    const double *my_b;
-    double *my_c;
-	const size_t	size;
 
-public:
-	void operator()(const tbb::blocked_range2d<size_t>& r) const 
-	{
-        size_t y_idx	=	r.rows().begin()*size;
-		for( size_t i=r.rows().begin(); i!=r.rows().end(); ++i,y_idx+=size )
+void ParallelMatrixMultiply(double *a, double *b, double *c,size_t size )
+{
+	tbb::parallel_for( tbb::blocked_range2d<size_t>(0, size, 16, 0, size, 32),     
+    
+		[a,b,c,size](const tbb::blocked_range2d<size_t>& r)
 		{
-			size_t x_idx	=y_idx+r.cols().begin();
-            for( size_t j=r.cols().begin(); j!=r.cols().end(); ++j,++x_idx ) 
+			size_t y_idx = r.rows().begin()*size;
+			for (size_t i = r.rows().begin(); i != r.rows().end(); ++i, y_idx += size)
 			{
-				double sum		=	 0;
-				size_t k_idx	=	 0;		
-                for( size_t k=0; k<size; ++k,k_idx+=size)
-                    sum += my_a[y_idx+k]*my_b[k_idx+j];
-                
-				my_c[x_idx] = sum;
-            }
-        }
-    }
-    MatrixMultiplyBody2D(const  double *a,const  double *b, double *c,size_t pSize ) :
-        my_a(a), my_b(b), my_c(c),size(pSize)
-    {
-	}
-};
+				size_t x_idx = y_idx + r.cols().begin();
+				for (size_t j = r.cols().begin(); j != r.cols().end(); ++j, ++x_idx)
+				{
+					double sum = 0;
+					size_t k_idx = 0;
+					for (size_t k = 0; k < size; ++k, k_idx += size)
+						sum += a[y_idx + k] * b[k_idx + j];
 
-void ParallelMatrixMultiply(double *a, double *b, double *c,size_t pSize )
-{
-	tbb::parallel_for( tbb::blocked_range2d<size_t>(0, pSize, 16, 0, pSize, 32),     
-                  MatrixMultiplyBody2D(a,b,c,pSize) );
+					c[x_idx] = sum;
+				}
+			}
+		}
+	
+	);
 }
 
 
@@ -258,7 +247,7 @@ class sphere_kriging_variogram
 
 		}
 
-		 double operator()(double r2) const
+		double operator()(double r2) const
 		{
 			const double val=std::sqrt(r2);
 			if(val>=a[2]) return a[0]+a[1];
@@ -481,20 +470,11 @@ void get_gaussian(
 
 struct Cher
 {
-	Cher():
-		flag(false),
-		r(0.0),
-		p(0.0),
-		Ap(0.0),
-		node_values(0.0)
-	{
-	
-	}
-	bool flag;
-	double r;//+1
-	double p;//+5
-	double Ap;//+9
-	double node_values;//13
+	bool flag{};
+	double r{};
+	double p{};
+	double Ap{};
+	double node_value{};
 
 };
 
@@ -506,109 +486,6 @@ struct AdvData
 	double tmp_t_2;
 	double tt;
 };
-
-
-
-class CalculApp
-{
-		Cher	*cher;
-		const	size_t	size;
-		const	AdvData& adv_data;
-		
-	public:
-		double App;
-		CalculApp(Cher  *p_cher,size_t	p_size,const AdvData& p_adv_data):cher(p_cher),size(p_size),App(0.0),adv_data(p_adv_data)	{}
-		CalculApp(const CalculApp & x,tbb::split ):cher(x.cher),size(x.size),App(0.0),adv_data(x.adv_data){}
-		
-		void operator() ( const tbb::blocked_range<size_t>& r)
-		{				
-				double sum=App;
-
-				auto  *point_cher=cher+adv_data.two_node_x+r.begin();
-
-				for(size_t i= r.begin();i<r.end();++i,++point_cher)
-				{
-					if(point_cher->flag) 	continue;
-					double tmp_sum=(point_cher-1)->p+(point_cher+1)->p+(point_cher-size)->p+(point_cher+size)->p;
-					point_cher->Ap=adv_data.tmp_t*point_cher->p+  adv_data.tt*(
-													(point_cher-2)->p+
-													(point_cher+2)->p+
-													(point_cher-adv_data.two_node_x)->p+
-													(point_cher+adv_data.two_node_x)->p
-												)- adv_data.tmp_t_2*tmp_sum;
-					sum+=point_cher->Ap*point_cher->p;
-				}
-				App=sum;
-		}
- 
-		void join( const CalculApp & x ) 
-		{
-			App+=x.App;
-		}
-};
-
-
-
-
-class CalculRR
-{
-		Cher	*cher;
-		double  alpha;
-		const	size_t	size;
-		
-	public:
-		double rr;
-		CalculRR(Cher  *p_cher,size_t	p_size,double  p_alpha):cher(p_cher),size(p_size),alpha(p_alpha),rr(0.0){}
-		CalculRR(const CalculRR & x,tbb::split ):cher(x.cher),alpha(x.alpha),size(x.size),rr(0.0){}
-		
-		void operator() ( const tbb::blocked_range<size_t>& r)
-		{				
-				double sum=rr;
-
-				auto  *point_cher=cher+2*size+r.begin();
-
-				for(size_t i= r.begin();i<r.end();++i,++point_cher)
-				{
-					if(point_cher->flag) 			continue;
-					
-					point_cher->node_values+=alpha*point_cher->p;
-					point_cher->r-=alpha*point_cher->Ap;
-					sum+=point_cher->r*point_cher->r;
-				}
-				rr=sum;
-		}
- 
-		void join( const CalculRR & x ) 
-		{
-			rr+=x.rr;
-		}
-};
-
-
-class CalculP
-{
-		Cher	*cher;
-		double  beta;
-		const	size_t	size;
-	
-public:
-		CalculP(Cher  *p_cher,size_t	p_size,double  p_beta):cher(p_cher),size(p_size),beta(p_beta){}
-		
-		void operator() ( const tbb::blocked_range<size_t>& r)const
-		{				
-				auto  *point_cher=cher+2*size+r.begin();
-
-				for(size_t i= r.begin();i<r.end();++i,++point_cher)
-				{
-					if(point_cher->flag) 		continue;
-					(point_cher->p*=beta)+=point_cher->r;
-				}
-				
-		}
-};
-
-		
-		
 
 class GaussionInitializer:public  GridInitializer
 {
@@ -628,7 +505,7 @@ class GaussionInitializer:public  GridInitializer
 						for(int y=0;y<node_y_count+4;++y)
 						{
 							int idx=y*(node_x_count+4)+x;
-							cher[idx].node_values=Gaussina(x-2,y-2,xsr,ysr,zsum,Dx,Dy,corr,corrective_factor  );
+							cher[idx].node_value=Gaussina(x-2,y-2,xsr,ysr,zsum,Dx,Dy,corr,corrective_factor  );
 						}
 					}
 	
@@ -673,37 +550,34 @@ class VoronoiInitializer:public  GridInitializer
 
 			virtual void Init(CalculParam *calcul_grid,const  Point3DList &pList,Cher *cher)
 			{
-					constexpr std::array<std::pair<int, int>, 8> plus_minus=
-					{
-						std::make_pair(-1,-1),
-						std::make_pair(-1,0),
-						std::make_pair(-1,+1),
-						std::make_pair(0,-1),
-						std::make_pair(0,+1),
-						std::make_pair(1,-1),
-						std::make_pair(1,0),
-						std::make_pair(1,+1)
-					};
-
 					const	int		node_x_count	=	calcul_grid->width+4;
 					const	int		node_y_count	=	calcul_grid->height+4;
 					const unsigned size=node_x_count*node_y_count;
 					std::vector<int>		voron(node_x_count*node_y_count,-1);
-					std::vector<int>		pWave;
-					std::vector<int>		pTmpWave;
+					tbb::concurrent_vector<int>		pWave;
+					tbb::concurrent_vector<int>		pTmpWave;
 
-					for (const auto &[x, y, z] : pList)
-					{
-							int x_idx=std::round(x)+2;
-							if(x_idx<0||x_idx>=node_x_count) continue;
-							const int y_idx= std::round(y)+2;
-							if(y_idx<0||y_idx>=node_y_count) continue;
-							const int idx=y_idx*(node_x_count)+x_idx;
-							if(idx<0) continue;
-							voron[idx]=idx;
-							cher[idx].node_values=z;
-							pWave.push_back(idx);
-					}
+					tbb::parallel_for(tbb::blocked_range<Point3DList::const_iterator>(pList.cbegin(), pList.cend()),
+						[cher,node_x_count, node_y_count, &voron,&pWave](const tbb::blocked_range<Point3DList::const_iterator> &r)
+						{
+							std::vector<int> tmp;
+							for (auto i = r.begin(); i != r.end(); ++i)
+							{
+								const auto &[x, y, z] = *i;
+								int x_idx = std::round(x) + 2;
+								if (x_idx < 0 || x_idx >= node_x_count) continue;
+								const int y_idx = std::round(y) + 2;
+								if (y_idx < 0 || y_idx >= node_y_count) continue;
+								const int idx = y_idx * (node_x_count)+x_idx;
+								if (idx < 0) continue;
+								voron[idx] = idx;
+								cher[idx].node_value = z;
+								tmp.push_back(idx);
+							}
+							std::copy(tmp.cbegin(), tmp.cend(), pWave.grow_by(tmp.size()));
+							
+						}
+					);
 					
 					double xsr, ysr, zsum, Dx, Dy, corr, corrective_factor;
 					get_gaussian(xsr, ysr, zsum, Dx, Dy, corr, corrective_factor, pList);
@@ -751,66 +625,88 @@ class VoronoiInitializer:public  GridInitializer
 						//cher[idx].node_values = 0;
 					}
 	
-					
-					while(!pWave.empty())
+					while (!pWave.empty())
 					{
-							pTmpWave.clear();	
-		
-							for(const auto idx :pWave)
+						pTmpWave.clear();
+
+						tbb::parallel_for(tbb::blocked_range<tbb::concurrent_vector<int>::const_iterator>(pWave.cbegin(), pWave.cend()),
+							[cher, node_x_count, node_y_count, &voron, &pTmpWave](tbb::blocked_range<tbb::concurrent_vector<int>::const_iterator> &r)
+						{
+							constexpr std::array<std::pair<int, int>, 8> plus_minus =
 							{
-								const int v=voron[idx];
-								const int y=idx/node_x_count;
-								const int x=idx%node_x_count;
+								std::make_pair(-1,-1),
+								std::make_pair(-1,0),
+								std::make_pair(-1,+1),
+								std::make_pair(0,-1),
+								std::make_pair(0,+1),
+								std::make_pair(1,-1),
+								std::make_pair(1,0),
+								std::make_pair(1,+1)
+							};
 
-								for(const auto &[xd,yd] : plus_minus)
+							for (auto i = r.begin(); i != r.end(); ++i)
+							{
+								const auto idx = *i;
+								const int v = voron[idx];
+								const int y = idx / node_x_count;
+								const int x = idx % node_x_count;
+
+								for (const auto &[xd, yd] : plus_minus)
 								{
-									const int _y=y+ yd;
-									const int _x=x+ xd;
-									const int	tmp_idx=_y*node_x_count+_x;
-									if(_x<0||_y<0||_x>=node_x_count||_y>=node_y_count) continue;
-									int	&_v=voron[tmp_idx];
-						
-									if(_v<0)
+									const int _y = y + yd;
+									const int _x = x + xd;
+									const int	tmp_idx = _y * node_x_count + _x;
+									if (_x < 0 || _y < 0 || _x >= node_x_count || _y >= node_y_count) continue;
+									int	&_v = voron[tmp_idx];
+
+									if (_v < 0)
 									{
-											_v=v;
-											cher[tmp_idx].node_values	= cher[v].node_values;
+										_v = v;
+										cher[tmp_idx].node_value = cher[v].node_value;
 
-											int y2=v/node_x_count;
-											int x2=v%node_x_count;
+										int y2 = v / node_x_count;
+										int x2 = v % node_x_count;
 
-											if(x2==1||y2==1||x2==node_x_count-2||y2==node_y_count-2) 		
-											{
-												cher[tmp_idx].flag=true;
-											
-											}
+										if (x2 == 1 || y2 == 1 || x2 == node_x_count - 2 || y2 == node_y_count - 2)
+										{
+											cher[tmp_idx].flag = true;
 
-											pTmpWave.push_back(tmp_idx);
-											continue;
+										}
+
+										pTmpWave.push_back(tmp_idx);
+										continue;
 									}
 
-					
+
 								}
 
 							}
-		
-							std::swap(pWave,pTmpWave);
-							
+						}
+						);
+
+						std::swap(pWave, pTmpWave);
+
 					}
 
 					
-					for (const auto &[x, y, z] : pList)
-					{
-						const int x_idx=std::round(x)+2;
-						if(x_idx<0||x_idx>=node_x_count) continue;
-						const int y_idx= std::round(y)+2;
-						if(y_idx<0||y_idx>=node_y_count) continue;
-
-						const int idx=y_idx*(node_x_count)+x_idx;
-						if(idx<0) continue;
-						cher[idx].node_values = z;
-						cher[idx].flag=true;
-						
-					}
+					
+					tbb::parallel_for(tbb::blocked_range<Point3DList::const_iterator>(pList.cbegin(), pList.cend()),
+						[cher, node_x_count, node_y_count](const tbb::blocked_range<Point3DList::const_iterator> &r)
+						{
+							for (auto i = r.begin(); i != r.end(); ++i)
+							{
+								const auto &[x, y, z] = *i;
+								const int x_idx = std::round(x) + 2;
+								if (x_idx < 0 || x_idx >= node_x_count) continue;
+								const int y_idx = std::round(y) + 2;
+								if (y_idx < 0 || y_idx >= node_y_count) continue;
+								const int idx = y_idx * (node_x_count)+x_idx;
+								if (idx < 0) continue;
+								cher[idx].node_value = z;
+								cher[idx].flag = true;
+							}
+						}
+					);
 			
 			}
 	
@@ -819,24 +715,16 @@ class VoronoiInitializer:public  GridInitializer
 
 
 
-bool get_minmum_surface(
-							CalculParam *calcul_grid
-							,const  Point3DList &pList
-							,double tension
-							,unsigned max_iteration
-							,double max_miscalculation
-							,GridInitializer *initializer /*=0 */)
-
+bool get_minmum_surface(CalculParam *calcul_grid,const  Point3DList &pList,double tension,unsigned max_iteration,double max_miscalculation,GridInitializer *initializer /*=0 */)
 {
 	
 	const int		node_x_count	=	calcul_grid->width+4;
 	const int		node_y_count	=	calcul_grid->height+4;
-	double	*node_values	=	calcul_grid->node_values;
+	double	*const node_values	=	calcul_grid->node_values;
 	const unsigned size		=	(node_x_count)*(node_y_count);
 
-
 	std::vector<Cher>  cCher(size);
-	auto *cher=&cCher[0];
+	auto * const cher=&cCher[0];
 
 	if(initializer)
 	{
@@ -849,89 +737,144 @@ bool get_minmum_surface(
 		in.Init(calcul_grid,pList,cher);
 	}
 
-	
+	tbb::parallel_for(tbb::blocked_range<Point3DList::const_iterator>(pList.cbegin(), pList.cend()),
+		[cher, node_x_count, node_y_count](const tbb::blocked_range<Point3DList::const_iterator> &r)
+		{
+			for (auto i = r.begin(); i != r.end(); ++i)
+			{
+				const auto &[x, y, z] = *i;
+				const int x_idx = std::round(x) + 2;
+				if (x_idx < 0 || x_idx >= node_x_count) continue;
+				const int y_idx = std::round(y) + 2;
+				if (y_idx < 0 || y_idx >= node_y_count) continue;
+				const int idx = y_idx * (node_x_count)+x_idx;
+				if (idx < 0) continue;
+				cher[idx].node_value = z;
+				cher[idx].flag = true;
 
-	for (const auto &[x, y, z] : pList)
+			}
+		}
+	);
+
+
+	double rr = tbb::parallel_reduce(tbb::blocked_range<size_t>(0, size), 0.0,
+		[cher, node_x_count, tension](const tbb::blocked_range<size_t>& r, double rr)->double
 	{
-		const int x_idx = std::round(x) + 2;
-		if(x_idx<0||x_idx>=node_x_count) continue;
-		const int y_idx= std::round(y) + 2;
-		if(y_idx<0||y_idx>=node_y_count) continue;
-		const int idx=y_idx*(node_x_count)+x_idx;
-		if(idx<0) continue;
-		cher[idx].node_values= z;
-		cher[idx].flag=true;
-		
-	}
-	
-	double rr=0;
-	for(unsigned int k=0;k<size;k++)
-	{
-		if(cher[k].flag) continue;
-		cher[k].r=-((1-tension)*
-				 (
-					12*cher[k].node_values-	
-									4*(
-										cher[k-1].node_values+
-										cher[k+1].node_values+
-										cher[k-node_x_count].node_values+
-										cher[k+node_x_count].node_values	
-										)+
-								     (
-										cher[k-2].node_values+
-										cher[k+2].node_values+
-										cher[k-2*node_x_count].node_values+	
-										cher[k+2*node_x_count].node_values
-									 ) 
-				 )+
-			tension*(	4*cher[k].node_values-cher[k-1].node_values-	cher[k+1].node_values-	cher[k-node_x_count].node_values-cher[k+node_x_count].node_values)
-		);
-	
-		cher[k].p=cher[k].r;
-		rr+=cher[k].r*cher[k].r;
 
-	}
-	
-	double alpha;
-	double App=0;
-	
-	const auto  *begin_cher=cher+2*node_x_count;
-	const auto  *end_flag=cher+size-2*node_x_count;	
+		for (auto k = r.begin(); k != r.end(); ++k)
+		{
+			if (cher[k].flag) continue;
+			cher[k].r = -((1 - tension)*
+				(
+					12 * cher[k].node_value -
+					4 * (
+						cher[k - 1].node_value +
+						cher[k + 1].node_value +
+						cher[k - node_x_count].node_value +
+						cher[k + node_x_count].node_value
+						) +
+						(
+							cher[k - 2].node_value +
+							cher[k + 2].node_value +
+							cher[k - 2 * node_x_count].node_value +
+							cher[k + 2 * node_x_count].node_value
+							)
+					) +
+				tension * (4 * cher[k].node_value - cher[k - 1].node_value - cher[k + 1].node_value - cher[k - node_x_count].node_value - cher[k + node_x_count].node_value)
+				);
 
-	const size_t	 two_node_x=2*node_x_count;
-	const double tt=(1-tension);
-	double beta=0.0;
-	double new_rr=0;
+			cher[k].p = cher[k].r;
+			rr += cher[k].r*cher[k].r;
+		}
+		return rr;
+	},
+	std::plus<double>()
+	);
+
+	
 	const double max_miscalculation_quad=max_miscalculation*max_miscalculation;
-	const double tmp_t=12-8*tension;
-	const double tmp_t_2=4-3*tension;
-
-	const AdvData adv_data={two_node_x,tmp_t,tmp_t_2,tt};
+	const AdvData adv_data={ 2 * node_x_count,12 - 8 * tension,4 - 3 * tension,1 - tension };
 	
-	unsigned int step=0;
-
-	for(;step<max_iteration;++step)
+	for(unsigned  step = 0;step<max_iteration;++step)
 	{
-		CalculApp calc_app(cher,node_x_count,adv_data);
-		tbb::parallel_reduce(tbb::blocked_range<size_t>(0,size-4*node_x_count),calc_app);
-		alpha=rr/calc_app.App;
-		CalculRR calc_rr(cher,node_x_count,alpha);
-		tbb::parallel_reduce(tbb::blocked_range<size_t>(0,size-4*node_x_count),calc_rr);
-		new_rr=calc_rr.rr;
+		
+		const auto App = tbb::parallel_reduce(tbb::blocked_range<size_t>(0,size-4*node_x_count),0.0, 
+			[cher, node_x_count, adv_data](const tbb::blocked_range<size_t>& r, double init)->double
+			{
+				auto  *point_cher = cher + adv_data.two_node_x + r.begin();
+				for (size_t i = r.begin(); i < r.end(); ++i, ++point_cher)
+				{
+					if (point_cher->flag) 	continue;
+					double tmp_sum = (point_cher - 1)->p + (point_cher + 1)->p + (point_cher - node_x_count)->p + (point_cher + node_x_count)->p;
+					point_cher->Ap = adv_data.tmp_t*point_cher->p + adv_data.tt*(
+						(point_cher - 2)->p +
+						(point_cher + 2)->p +
+						(point_cher - adv_data.two_node_x)->p +
+						(point_cher + adv_data.two_node_x)->p
+						) - adv_data.tmp_t_2*tmp_sum;
+					init += point_cher->Ap*point_cher->p;
+				}
+				return init;
+			},
+			std::plus<double>()
+		);
+		
+		const auto alpha=rr/App;
+		const auto new_rr = tbb::parallel_reduce(tbb::blocked_range<size_t>(0, size - 4 * node_x_count),0.0,
+			[cher, node_x_count, alpha](const tbb::blocked_range<size_t>& r,double init)->double
+			{
+				
+				auto  *point_cher = cher + 2 * node_x_count + r.begin();
+
+				for (auto i = r.begin(); i < r.end(); ++i, ++point_cher)
+				{
+					if (point_cher->flag) 	continue;
+
+					point_cher->node_value += alpha * point_cher->p;
+					point_cher->r -= alpha * point_cher->Ap;
+					init += point_cher->r*point_cher->r;
+				}
+				return init;
+			},
+			std::plus<double>()
+		);
+
+
 		if(new_rr<(max_miscalculation_quad)) 	
 			break;
-		beta=new_rr/rr;
+		const auto beta=new_rr/rr;
 		rr=new_rr;
-		tbb::parallel_for(tbb::blocked_range<size_t>(0,size-4*node_x_count),CalculP (cher,node_x_count,beta));
-	}  
-	
-	for(int y=0;y<calcul_grid->height;++y)
-	{
-		for(int x=0;x<calcul_grid->width;++x)
-		{
-			node_values[y*calcul_grid->width+x]= cher[(y+2)*node_x_count+x+2].node_values;
-		}
+
+		tbb::parallel_for
+		(
+			tbb::blocked_range<size_t>(0,size-4*node_x_count),
+			[cher, node_x_count, beta](const tbb::blocked_range<size_t>& r)
+			{
+				auto  *point_cher = cher + 2 * node_x_count + r.begin();
+
+				for (auto i = r.begin(); i < r.end(); ++i, ++point_cher)
+				{
+					if (point_cher->flag) 		continue;
+					(point_cher->p *= beta) += point_cher->r;
+				}
+			}
+		);
 	}
+
+	tbb::parallel_for(tbb::blocked_range2d<size_t>(0, calcul_grid->height, 16, 0, calcul_grid->width, 32),
+		[node_values, cher, calcul_grid, node_x_count](const tbb::blocked_range2d<size_t>& r)
+		{
+
+			for (auto y = r.rows().begin(); y != r.rows().end(); ++y)
+			{
+				for (auto x = r.cols().begin(); x != r.cols().end(); ++x)
+				{
+					node_values[y*calcul_grid->width + x] = cher[(y + 2)*node_x_count + x + 2].node_value;
+				}
+			}
+
+		}
+	);
 	
 	return true;
 
@@ -941,32 +884,17 @@ bool get_minmum_surface(
 
 void tbb_over(const size_t n, double* u,const double* v, const double *alpha)
 {
-	
-	class  tbb_over_calcul
-	{
-			double* u;
-			const double* v;
-			const double *alpha;
-		public:
-			tbb_over_calcul(double* pU,const double* pV, const double *pAlpha):
-				u(pU),
-				v(pV),
-				alpha(pAlpha)
+	tbb::parallel_for(tbb::blocked_range<size_t>(0, n),
+		[u, v, alpha](const tbb::blocked_range<size_t>& r)
 			{
-			}
-			void operator() ( const tbb::blocked_range<size_t>& r)const
-			{				
-				for(size_t i= r.begin();i<r.end();++i)
+				for (size_t i = r.begin(); i < r.end(); ++i)
 				{
-					
-					u[i]=u[i] +alpha[i]*(v[i]-u[i]);
-					
+
+					u[i] = u[i] + alpha[i] * (v[i] - u[i]);
+
 				}
 			}
-	};
-
-
-	tbb::parallel_for(tbb::blocked_range<size_t>(0, n),tbb_over_calcul(u,v, alpha));
+		);
 	
 }
 
@@ -1040,7 +968,6 @@ void solveBigStab::exec(std::vector<double> &A, std::vector<double> &b)
 
         // Ms = M*s_j
 		
-		//CopyMemory(&Ms[0],&s[0],sizeof(double)*n);
         
         // AMs = A*Ms
 		mulMatrixVector(n, &A[0],&s[0] ,&AMs[0]);

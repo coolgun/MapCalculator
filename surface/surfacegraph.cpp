@@ -9,7 +9,6 @@ using namespace QtDataVisualization;
 SurfaceGraph::SurfaceGraph(Q3DSurface *surface)
     : m_graph(surface)
 {
-	
 	r.setCoords(std::numeric_limits<double>::max(), std::numeric_limits<double>::max(), 0.0, 0.0);
     m_graph->setAxisX(new QValue3DAxis);
     m_graph->setAxisY(new QValue3DAxis);
@@ -47,7 +46,7 @@ void SurfaceGraph::open()
 		r.setCoords(qMin(r.left(), x), qMin(r.top(), y), qMax(r.right(), x), qMax(r.bottom(), y));
 	}
 
-	//r.adjust(-r.width() / 10, -r.height() / 10, r.width() / 10, r.height() / 10);
+	r.adjust(-r.width() / 10, -r.height() / 10, r.width() / 10, r.height() / 10);
 
 	sampleCountX = std::round(r.width() / step);
 	sampleCountZ = std::round(r.height() / step);

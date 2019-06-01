@@ -52,7 +52,7 @@ private:
 	QRectF r;
 	double minZ{};
 	double maxZ{};
-	double tension = 1;
+	double tension = 0;
 	unsigned char rbf_idx{};
 	double rbf_param = 0.2;
 	unsigned char  kriging_idx{};
